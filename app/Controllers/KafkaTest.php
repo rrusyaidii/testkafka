@@ -48,8 +48,8 @@ class KafkaTest extends ResourceController
             'user_id' => rand(1, 500),
             'amount' => rand(20, 999),
             'items' => [
-                ['sku' => 'A100', 'qty' => rand(1,3)],
-                ['sku' => 'B200', 'qty' => rand(1,5)]
+                ['sku' => 'A100', 'qty' => rand(1, 3)],
+                ['sku' => 'B200', 'qty' => rand(1, 5)]
             ],
             'timestamp' => date('Y-m-d H:i:s'),
             'retry' => 0

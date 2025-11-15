@@ -1,12 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kafka Messages Dashboard</title>
     <!-- Import jQuery library -->
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-    
+
     <!-- CSS Styles for a prettier look -->
     <style>
         body {
@@ -30,11 +31,13 @@
             background-color: #fff;
         }
 
-        #kafka-table th, #kafka-table td {
+        #kafka-table th,
+        #kafka-table td {
             padding: 12px 15px;
             text-align: left;
             border-bottom: 1px solid #ddd;
-            word-wrap: break-word; /* Prevents long strings from breaking layout */
+            word-wrap: break-word;
+            /* Prevents long strings from breaking layout */
         }
 
         #kafka-table th {
@@ -57,13 +60,16 @@
             font-family: monospace;
             font-size: 0.8em;
             color: #555;
-            max-width: 300px; /* Constrains the width of the JSON */
+            max-width: 300px;
+            /* Constrains the width of the JSON */
             overflow: hidden;
             text-overflow: ellipsis;
-            white-space: nowrap; /* Keeps JSON on a single line with ellipsis */
+            white-space: nowrap;
+            /* Keeps JSON on a single line with ellipsis */
         }
     </style>
 </head>
+
 <body>
     <h2>Kafka Messages Dashboard</h2>
 
@@ -87,7 +93,7 @@
     <script>
         function loadData() {
             // Fetch data from the API endpoint
-            $.get('/api/kafka/messages', function(data) {
+            $.get('/api/kafka/messages', function (data) {
                 // Sort the data array by the 'id' field in ascending order
                 data.sort((a, b) => a.id - b.id);
 
@@ -108,7 +114,7 @@
                 });
                 // Update the table body with the new rows
                 $('#kafka-table tbody').html(rows);
-            }).fail(function() {
+            }).fail(function () {
                 console.error("Failed to fetch Kafka messages.");
                 $('#kafka-table tbody').html('<tr><td colspan="5">Error loading data. Check console for details.</td></tr>');
             });
@@ -116,9 +122,10 @@
 
         // Auto refresh every 3 seconds (3000ms)
         setInterval(loadData, 3000);
-        
+
         // Initial load of data when the page loads
         loadData();
     </script>
 </body>
+
 </html>

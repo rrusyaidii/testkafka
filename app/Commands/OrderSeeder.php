@@ -18,11 +18,11 @@ class OrderSeeder extends BaseCommand
         for ($i = 0; $i < 1000; $i++) {
             $order = [
                 'order_id' => rand(1000, 9999),
-                'user_id'  => rand(1, 500),
-                'amount'   => rand(20, 999),
+                'user_id' => rand(1, 500),
+                'amount' => rand(20, 999),
                 'items' => [
-                    ['sku' => 'A100', 'qty' => rand(1,3)],
-                    ['sku' => 'B200', 'qty' => rand(1,5)]
+                    ['sku' => 'A100', 'qty' => rand(1, 3)],
+                    ['sku' => 'B200', 'qty' => rand(1, 5)]
                 ],
                 'timestamp' => date('Y-m-d H:i:s'),
                 'retry' => 0

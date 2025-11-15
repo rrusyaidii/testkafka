@@ -12,8 +12,8 @@ use Ratchet\WebSocket\WsServer;
 
 class WebSocketServer extends BaseCommand implements MessageComponentInterface
 {
-    protected $group       = 'Websocket';
-    protected $name        = 'ws:start';
+    protected $group = 'Websocket';
+    protected $name = 'ws:start';
     protected $description = 'Start WebSocket server for real-time dashboard';
 
     protected $clients;
@@ -45,6 +45,10 @@ class WebSocketServer extends BaseCommand implements MessageComponentInterface
         $this->clients->detach($conn);
     }
 
-    public function onMessage(ConnectionInterface $from, $msg) {}
-    public function onError(ConnectionInterface $conn, \Exception $e) {}
+    public function onMessage(ConnectionInterface $from, $msg)
+    {
+    }
+    public function onError(ConnectionInterface $conn, \Exception $e)
+    {
+    }
 }

@@ -9,8 +9,8 @@ use RdKafka\KafkaConsumer as RdKafkaConsumer;
 
 class KafkaWorker extends BaseCommand
 {
-    protected $group       = 'Kafka';
-    protected $name        = 'kafka:work';
+    protected $group = 'Kafka';
+    protected $name = 'kafka:work';
     protected $description = 'Multi-topic consumer with retry + DLQ support';
 
     private $db;
@@ -61,29 +61,35 @@ class KafkaWorker extends BaseCommand
             return;
         }
 
-        $maxAttempts = 5;
-        $attempt = 0;
+        try {
+            match ($topic) {
+                'orders-topic' => $this->processOrder($data),
+                'orders-retry-topic' => $this->processRetryOrder($data),
+                'notifications-topic' => $this->processNotification($data),
+                default => null
+            };
+        } catch (\Throwable $e) {
+            // Log error
+            CLI::error("Processing error: " . $e->getMessage());
 
-        while ($attempt < $maxAttempts) {
-            try {
-                match ($topic) {
-                    'orders-topic' => $this->processOrder($data),
-                    'orders-retry-topic' => $this->processRetryOrder($data),
-                    'notifications-topic' => $this->processNotification($data),
-                    default => null
-                };
+            // increment retry counter and send to retry topic with next_try timestamp (exponential backoff)
+            $data['retry'] = ($data['retry'] ?? 0) + 1;
 
-                return; // success → exit loop
+            // calculate backoff in seconds: e.g. 5, 30, 60, 300...
+            $backoffs = [5, 30, 60, 300, 900]; // adjust as needed
+            $idx = min($data['retry'] - 1, count($backoffs) - 1);
+            $delaySeconds = $backoffs[$idx] ?? end($backoffs);
 
-            } catch (\Throwable $e) {
-                $attempt++;
-                CLI::error("⚠ Error attempt {$attempt}: " . $e->getMessage());
-                sleep(1); // optional backoff
+            $data['next_try'] = date('Y-m-d H:i:s', time() + $delaySeconds);
+
+            // If retry exceeded threshold, send to DLQ instead
+            $maxRetries = 3;
+            if ($data['retry'] > $maxRetries) {
+                $this->sendToDLQ($data);
+            } else {
+                $this->sendToRetry($data);
             }
         }
-
-        // ⛔ after 5 failed attempts → DLQ
-        $this->sendToDLQ($data);
     }
 
 
@@ -99,8 +105,8 @@ class KafkaWorker extends BaseCommand
 
         $this->db->table('orders')->insert([
             'order_id' => $order['order_id'],
-            'user_id'  => $order['user_id'],
-            'amount'   => $order['amount'],
+            'user_id' => $order['user_id'],
+            'amount' => $order['amount'],
             'raw_json' => json_encode($order)
         ]);
 
@@ -109,16 +115,50 @@ class KafkaWorker extends BaseCommand
 
     private function processRetryOrder(array $order)
     {
+        // If next_try exists and it's in the future, re-enqueue the message (sleep small) and return.
+        if (!empty($order['next_try'])) {
+            $nextTryTs = strtotime($order['next_try']);
+            if ($nextTryTs > time()) {
+                $wait = $nextTryTs - time();
+                CLI::write("⏳ Retry for order {$order['order_id']} scheduled in {$wait}s", 'blue');
+                // Don't busy-loop — re-publish into retry topic so other workers can pick later.
+                // Re-publish unchanged (or with same next_try) and return.
+                // But to avoid tight loops, we re-publish with same next_try and return.
+                service('kafkaProducer')->send('orders-retry-topic', $order);
+                return;
+            }
+        }
+
+        // If retry count exceeded -> send to DLQ
         if (($order['retry'] ?? 0) >= 3) {
             $this->sendToDLQ($order);
             return;
         }
 
+        // increment retry (we attempted now)
         $order['retry'] = ($order['retry'] ?? 0) + 1;
 
-        // PROCESS AGAIN
-        $this->processOrder($order);
+        // try processing; any exception will be caught by caller (handleMessage) or rethrown here
+        try {
+            $this->processOrder($order);
+        } catch (\Throwable $e) {
+            CLI::error("Retry processing failed for order {$order['order_id']}: " . $e->getMessage());
+            // compute a new next_try and requeue to retry-topic (exponential backoff)
+            $backoffs = [5, 30, 60, 300, 900];
+            $idx = min($order['retry'] - 1, count($backoffs) - 1);
+            $delaySeconds = $backoffs[$idx] ?? end($backoffs);
+            $order['next_try'] = date('Y-m-d H:i:s', time() + $delaySeconds);
+
+            // If retry limit reached, send to DLQ
+            if ($order['retry'] >= 3) {
+                $this->sendToDLQ($order);
+            } else {
+                service('kafkaProducer')->send('orders-retry-topic', $order);
+                CLI::write("⏳ Requeued order {$order['order_id']} for retry (retry={$order['retry']})", 'blue');
+            }
+        }
     }
+
 
     private function processNotification(array $data)
     {
@@ -127,18 +167,42 @@ class KafkaWorker extends BaseCommand
 
     private function sendToRetry($data)
     {
-        $data['retry'] = ($data['retry'] ?? 0) + 1;
-        service('kafkaProducer')->send('orders-retry-topic', $data);
-
-        CLI::write("⏳ Sent to retry queue", 'blue');
+        $data['retry'] = ($data['retry'] ?? 0);
+        try {
+            $producer = service('kafkaProducer');
+            if ($producer === null) {
+                throw new \RuntimeException('kafkaProducer service not registered');
+            }
+            $producer->send('orders-retry-topic', $data);
+            CLI::write("⏳ Sent order to retry-topic (retry={$data['retry']})", 'blue');
+        } catch (\Throwable $e) {
+            CLI::error("Failed to send to retry-topic: " . $e->getMessage());
+            // fallback: send to DLQ if cannot send to retry
+            $this->sendToDLQ($data);
+        }
     }
 
     private function sendToDLQ($data)
     {
-        service('kafkaProducer')->send('orders-dlq-topic', $data);
-
-        CLI::write("❌ Sent to DLQ", 'red');
+        try {
+            $producer = service('kafkaProducer');
+            if ($producer === null) {
+                throw new \RuntimeException('kafkaProducer service not registered');
+            }
+            $producer->send('orders-dlq-topic', $data);
+            CLI::write("❌ Sent to DLQ", 'red');
+        } catch (\Throwable $e) {
+            // last resort: write to DB 'failed' table or log file
+            CLI::error("Failed to send to DLQ: " . $e->getMessage());
+            // optional: write to failed_messages table
+            $this->db->table('failed_messages')->insert([
+                'payload' => json_encode($data),
+                'error' => $e->getMessage(),
+                'created_at' => date('Y-m-d H:i:s')
+            ]);
+        }
     }
+
 
     private function broadcastWS($msg)
     {
