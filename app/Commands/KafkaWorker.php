@@ -20,7 +20,7 @@ class KafkaWorker extends BaseCommand
         $this->db = \Config\Database::connect();
 
         $conf = new Conf();
-        $conf->set('metadata.broker.list', 'localhost:29092');
+        $conf->set('metadata.broker.list', '127.0.0.1:29092'); // force IPv4
         $conf->set('group.id', 'ci4-worker-group');
         $conf->set('auto.offset.reset', 'earliest');
         $conf->set('enable.auto.commit', 'true');

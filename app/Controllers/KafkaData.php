@@ -11,7 +11,7 @@ class KafkaData extends ResourceController
     {
         $model = new OrdersModel();
         // return latest 200 orders by default to avoid huge payloads
-        $data = $model->orderBy('id', 'DESC')->findAll(200);
+        $data = $model->orderBy('id', 'DESC')->findAll();
 
         // if you want ascending order change next line
         $data = array_reverse($data);
