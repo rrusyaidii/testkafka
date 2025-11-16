@@ -74,4 +74,21 @@ CREATE TABLE IF NOT EXISTS orders (
     raw_json LONGTEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+```
+### 8. Create Kafka topics (required)
+Run these once to create topics used by the app:
+```
+docker compose exec kafka bash -c "kafka-topics --bootstrap-server localhost:9092 --create --topic orders-topic --partitions 1 --replication-factor 1 --if-not-exists"
+docker compose exec kafka bash -c "kafka-topics --bootstrap-server localhost:9092 --create --topic orders-retry-topic --partitions 1 --replication-factor 1 --if-not-exists"
+docker compose exec kafka bash -c "kafka-topics --bootstrap-server localhost:9092 --create --topic orders-dlq-topic --partitions 1 --replication-factor 1 --if-not-exists"
+docker compose exec kafka bash -c "kafka-topics --bootstrap-server localhost:9092 --create --topic notifications-topic --partitions 1 --replication-factor 1 --if-not-exists"
+```
 
+### 9. Run Seeder
+Publish 100 sample orders:
+```
+php spark db:seed OrdersSeeder
+```
+### 10. Change number of messages:
+```
+SEED_COUNT=500 php spark db:seed OrdersSeeder
